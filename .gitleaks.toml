@@ -1,0 +1,8 @@
+title = "hooksink-go gitleaks config"
+
+[allowlist]
+description = "Known non-secret generated and dependency files"
+paths = [
+  '''(^|/)go\.sum$''',
+  '''(^|/)examples/.*/go\.sum$''',
+]

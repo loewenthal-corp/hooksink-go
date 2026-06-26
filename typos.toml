@@ -1,0 +1,13 @@
+[files]
+extend-exclude = [
+  "go.sum",
+  "examples/*/go.sum",
+]
+
+[default.extend-words]
+gofumpt = "gofumpt"
+goleak = "goleak"
+gotestsum = "gotestsum"
+mrkdwn = "mrkdwn"
+toight = "toight"
+zizmor = "zizmor"

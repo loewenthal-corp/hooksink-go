@@ -1,0 +1,171 @@
+---
+version: "3"
+
+output: group
+
+vars:
+  CPU_COUNT:
+    sh: nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "4"
+  PARALLEL_COUNT:
+    sh: echo $(({{.CPU_COUNT}} * 2))
+  EXAMPLE_MODULES: "examples/chi examples/gorilla examples/gin examples/echo"
+  ROOT: "{{.TASKFILE_DIR}}"
+  GO: "{{.ROOT}}/bin/go"
+  GOFUMPT: "{{.ROOT}}/bin/gofumpt"
+  GOLANGCI_LINT: "{{.ROOT}}/bin/golangci-lint"
+  GOTESTSUM: "{{.ROOT}}/bin/gotestsum"
+  ACTIONLINT: "{{.ROOT}}/bin/actionlint"
+  GITLEAKS: "{{.ROOT}}/bin/gitleaks"
+  TYPOS: "{{.ROOT}}/bin/typos"
+  ZIZMOR: "{{.ROOT}}/bin/zizmor"
+
+tasks:
+  do:
+    desc: "Run all quality checks"
+    cmds:
+      - task: format
+      - task: mod::tidy
+      - task: build
+      - task: lint
+      - task: test::ci
+      - task: test::compat
+      - task: security
+
+  init:
+    desc: "Download dependencies for the root module and examples"
+    cmds:
+      - "{{.GO}} mod download"
+      - task: examples::init
+
+  format:
+    desc: "Format Go code"
+    aliases: [fmt, f]
+    sources:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+    cmds:
+      - "{{.GOFUMPT}} -w ."
+
+  mod::tidy:
+    desc: "Tidy root and example modules"
+    cmds:
+      - "{{.GO}} mod tidy"
+      - task: examples::tidy
+
+  lint:
+    desc: "Run all linting"
+    aliases: [l]
+    deps:
+      - lint::go
+      - lint::workflows
+      - lint::spelling
+
+  lint::go:
+    desc: "Lint Go code with golangci-lint"
+    cmds:
+      - "{{.GOLANGCI_LINT}} run ./..."
+
+  lint::vet:
+    desc: "Run go vet only"
+    cmds:
+      - "{{.GO}} vet -p {{.CPU_COUNT}} ./..."
+
+  lint::workflows:
+    desc: "Lint GitHub Actions workflow syntax"
+    cmds:
+      - "{{.ACTIONLINT}}"
+
+  lint::spelling:
+    desc: "Check spelling in code, docs, and config"
+    cmds:
+      - "{{.TYPOS}} --format brief"
+
+  build:
+    desc: "Build root package and runnable examples"
+    cmds:
+      - "{{.GO}} build ./..."
+      - task: examples::build
+
+  test:
+    desc: "Run Go tests"
+    aliases: [t]
+    cmds:
+      - "{{.GOTESTSUM}} --format testname -- -p {{.CPU_COUNT}} -parallel {{.PARALLEL_COUNT}} ./..."
+
+  test::ci:
+    desc: "Run tests with race detection and coverage"
+    cmds:
+      - mkdir -p dist
+      - "{{.GOTESTSUM}} --junitfile dist/test-results.xml --format testname -- -race -p {{.CPU_COUNT}} -parallel {{.PARALLEL_COUNT}} -covermode=atomic -coverprofile=dist/coverage.out ./..."
+
+  test::compat:
+    desc: "Verify the root and example modules with the declared Go 1.22 floor"
+    cmds:
+      - "GOTOOLCHAIN=go1.22.12 {{.GO}} test ./..."
+      - for: { var: EXAMPLE_MODULES }
+        cmd: "cd {{.ITEM}} && GOTOOLCHAIN=go1.22.12 {{.GO}} test ./..."
+
+  test::coverage-html:
+    desc: "Generate HTML coverage report"
+    cmds:
+      - mkdir -p dist
+      - "{{.GO}} test -coverprofile=dist/coverage.out ./..."
+      - "{{.GO}} tool cover -html=dist/coverage.out -o dist/coverage.html"
+
+  test::fuzz:
+    desc: "Run parser fuzzing for a short local pass"
+    cmds:
+      - "{{.GO}} test -run=^$ -fuzz=FuzzParseBody -fuzztime=30s ."
+
+  security:
+    desc: "Run security checks"
+    aliases: [sec]
+    cmds:
+      - task: security::govulncheck
+      - task: security::gitleaks
+      - task: security::zizmor
+
+  security::govulncheck:
+    desc: "Run Go vulnerability reachability scan"
+    cmds:
+      - "{{.GO}} run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./..."
+
+  security::gitleaks:
+    desc: "Scan the working tree for leaked secrets"
+    cmds:
+      - "{{.GITLEAKS}} detect --source . --no-git --redact --no-banner"
+
+  security::zizmor:
+    desc: "Audit GitHub Actions workflows"
+    cmds:
+      - "{{.ZIZMOR}} --offline --min-severity medium .github/workflows/ci.yaml .github/workflows/release.yaml .github/workflows/codeql.yaml"
+
+  examples::init:
+    desc: "Download example module dependencies"
+    cmds:
+      - for: { var: EXAMPLE_MODULES }
+        cmd: "cd {{.ITEM}} && {{.GO}} mod download"
+
+  examples::tidy:
+    desc: "Tidy example modules"
+    cmds:
+      - for: { var: EXAMPLE_MODULES }
+        cmd: "cd {{.ITEM}} && {{.GO}} mod tidy"
+
+  examples::build:
+    desc: "Build example modules"
+    cmds:
+      - for: { var: EXAMPLE_MODULES }
+        cmd: "cd {{.ITEM}} && {{.GO}} build ./..."
+
+  examples::test:
+    desc: "Test example modules"
+    cmds:
+      - for: { var: EXAMPLE_MODULES }
+        cmd: "cd {{.ITEM}} && {{.GO}} test ./..."
+
+  clean:
+    desc: "Clean local build artifacts"
+    cmds:
+      - rm -rf dist coverage.out coverage.html

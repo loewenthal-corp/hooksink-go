@@ -1,0 +1,7 @@
+.envrc.local
+.task/
+.hermit/
+dist/
+coverage.out
+coverage.html
+*.test

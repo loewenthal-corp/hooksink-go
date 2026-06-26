@@ -1,0 +1,76 @@
+---
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - nilerr
+    - reassign
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - unused
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        - io.Copy
+        - io.WriteString
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+
+    staticcheck:
+      checks:
+        - "all"
+        - "-ST1000"
+        - "-ST1003"
+        - "-ST1016"
+        - "-ST1020"
+        - "-ST1021"
+        - "-ST1022"
+
+    gosec:
+      excludes:
+        - G104
+        - G115
+
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+    paths:
+      - ".*\\.pb\\.go$"
+
+formatters:
+  enable:
+    - gofumpt
+
+output:
+  sort-results: true
+  sort-order:
+    - file
